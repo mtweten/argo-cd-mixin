@@ -39,10 +39,23 @@ local tbOverride = tbStandardOptions.override;
       ) +
       datasource.generalOptions.withLabel('Data source'),
 
+    local hostClusterVariable =
+      query.new(
+        'host_cluster',
+        'label_values(argocd_app_info{}, cluster)',
+      ) +
+      query.withDatasourceFromVariable(datasourceVariable) +
+      query.withSort(1) +
+      query.generalOptions.withLabel('Host Cluster') +
+      query.selectionOptions.withMulti(true) +
+      query.selectionOptions.withIncludeAll(true) +
+      query.refresh.onLoad() +
+      query.refresh.onTime(),
+
     local namespaceVariable =
       query.new(
         'namespace',
-        'label_values(argocd_app_info{}, namespace)'
+        'label_values(argocd_app_info{cluster=~"$host_cluster"}, namespace)'
       ) +
       query.withDatasourceFromVariable(datasourceVariable) +
       query.withSort(1) +
@@ -55,7 +68,7 @@ local tbOverride = tbStandardOptions.override;
     local jobVariable =
       query.new(
         'job',
-        'label_values(argocd_app_info{namespace=~"$namespace"}, job)',
+        'label_values(argocd_app_info{cluster=~"$host_cluster",namespace=~"$namespace"}, job)',
       ) +
       query.withDatasourceFromVariable(datasourceVariable) +
       query.withSort(1) +
@@ -67,12 +80,12 @@ local tbOverride = tbStandardOptions.override;
 
     local clusterVariable =
       query.new(
-        'cluster',
-        'label_values(argocd_app_info{namespace=~"$namespace", job=~"$job"}, dest_server)',
+        'dest_cluster',
+        'label_values(argocd_app_info{cluster=~"$host_cluster", namespace=~"$namespace", job=~"$job"}, dest_server)',
       ) +
       query.withDatasourceFromVariable(datasourceVariable) +
       query.withSort(1) +
-      query.generalOptions.withLabel('Cluster') +
+      query.generalOptions.withLabel('Destination Cluster') +
       query.selectionOptions.withMulti(true) +
       query.selectionOptions.withIncludeAll(true) +
       query.refresh.onLoad() +
@@ -81,7 +94,7 @@ local tbOverride = tbStandardOptions.override;
     local projectVariable =
       query.new(
         'project',
-        'label_values(argocd_app_info{namespace=~"$namespace", job=~"$job", dest_server=~"$cluster"}, project)',
+        'label_values(argocd_app_info{cluster=~"$host_cluster", namespace=~"$namespace", job=~"$job", dest_server=~"$dest_cluster"}, project)',
       ) +
       query.withDatasourceFromVariable(datasourceVariable) +
       query.withSort(1) +
@@ -94,7 +107,7 @@ local tbOverride = tbStandardOptions.override;
     local applicationVariable =
       query.new(
         'application',
-        'label_values(argocd_app_info{namespace=~"$namespace", job=~"$job", dest_server=~"$cluster", project=~"$project"}, name)',
+        'label_values(argocd_app_info{cluster=~"$host_cluster", namespace=~"$namespace", job=~"$job", dest_server=~"$dest_cluster", project=~"$project"}, name)',
       ) +
       query.withDatasourceFromVariable(datasourceVariable) +
       query.withSort(1) +
@@ -106,6 +119,7 @@ local tbOverride = tbStandardOptions.override;
 
     local variables = [
       datasourceVariable,
+      hostClusterVariable,
       namespaceVariable,
       jobVariable,
       clusterVariable,
@@ -114,9 +128,10 @@ local tbOverride = tbStandardOptions.override;
     ],
 
     local commonLabels = |||
+      cluster=~'$host_cluster',
       namespace=~'$namespace',
       job=~'$job',
-      dest_server=~'$cluster',
+      dest_server=~'$dest_cluster',
       project=~'$project',
     |||,
 
@@ -125,7 +140,7 @@ local tbOverride = tbStandardOptions.override;
         argocd_app_info{
           %s
         }
-      ) by (job, dest_server, project, health_status)
+      ) by (job, cluster, dest_server, project, health_status)
     ||| % commonLabels,
 
     local appHealthStatusTimeSeriesPanel =
@@ -157,7 +172,7 @@ local tbOverride = tbStandardOptions.override;
         argocd_app_info{
           %s
         }
-      ) by (job, dest_server, project, sync_status)
+      ) by (job, cluster, dest_server, project, sync_status)
     ||| % commonLabels,
 
     local appSyncStatusTimeSeriesPanel =
@@ -193,7 +208,7 @@ local tbOverride = tbStandardOptions.override;
             }[$__rate_interval]
           )
         )
-      ) by (job, dest_server, project, phase)
+      ) by (job, cluster, dest_server, project, phase)
     ||| % commonLabels,
 
     local appSyncTimeSeriesPanel =
@@ -225,7 +240,7 @@ local tbOverride = tbStandardOptions.override;
         argocd_app_info{
           %s
         }
-      ) by (job, dest_server, project, autosync_enabled)
+      ) by (job, cluster, dest_server, project, autosync_enabled)
     ||| % commonLabels,
 
     local appAutoSyncStatusTimeSeriesPanel =
@@ -279,7 +294,7 @@ local tbOverride = tbStandardOptions.override;
           %s
           health_status!~"Healthy|Progressing"
         }
-      ) by (job, dest_server, project, name, health_status)
+      ) by (job, cluster, dest_server, project, name, health_status)
     ||| % commonLabels,
 
     local appUnhealthyTablePanel =
@@ -307,7 +322,8 @@ local tbOverride = tbStandardOptions.override;
           {
             renameByName: {
               job: 'Job',
-              dest_server: 'Cluster',
+              cluster: 'Host Cluster',
+              dest_server: 'Destination Cluster',
               project: 'Project',
               name: 'Application',
               health_status: 'Health Status',
@@ -351,7 +367,7 @@ local tbOverride = tbStandardOptions.override;
           %s
           sync_status!="Synced"
         }
-      ) by (job, dest_server, project, name, sync_status) > 0
+      ) by (job, cluster, dest_server, project, name, sync_status) > 0
     ||| % commonLabels,
 
     local appOutOfSyncTablePanel =
@@ -379,7 +395,8 @@ local tbOverride = tbStandardOptions.override;
           {
             renameByName: {
               job: 'Job',
-              dest_server: 'Cluster',
+              cluster: 'Host Cluster',
+              dest_server: 'Destination Cluster',
               project: 'Project',
               name: 'Application',
               sync_status: 'Sync Status',
@@ -427,7 +444,7 @@ local tbOverride = tbStandardOptions.override;
             }[7d]
           )
         )
-      ) by (job, dest_server, project, name, phase) > 0
+      ) by (job, cluster, dest_server, project, name, phase) > 0
     ||| % commonLabels,
 
     local appSync7dTablePanel =
@@ -455,7 +472,8 @@ local tbOverride = tbStandardOptions.override;
           {
             renameByName: {
               job: 'Job',
-              dest_server: 'Cluster',
+              cluster: 'Host Cluster',
+              dest_server: 'Destination Cluster',
               project: 'Project',
               name: 'Application',
               phase: 'Phase',
@@ -499,7 +517,7 @@ local tbOverride = tbStandardOptions.override;
           %s
           autosync_enabled!="true"
         }
-      ) by (job, dest_server, project, name, autosync_enabled) > 0
+      ) by (job, cluster, dest_server, project, name, autosync_enabled) > 0
     ||| % commonLabels,
 
     local appAutoSyncDisabledTablePanel =
@@ -527,7 +545,8 @@ local tbOverride = tbStandardOptions.override;
           {
             renameByName: {
               job: 'Job',
-              dest_server: 'Cluster',
+              cluster: 'Host Cluster',
+              dest_server: 'Destination Cluster',
               project: 'Project',
               name: 'Application',
               autosync_enabled: 'Auto Sync Enabled',
@@ -571,7 +590,7 @@ local tbOverride = tbStandardOptions.override;
           %s
           name=~"$application",
         }
-      ) by (namespace, job, dest_server, project, name, health_status)
+      ) by (namespace, cluster, job, dest_server, project, name, health_status)
     ||| % commonLabels,
 
     local appHealthStatusByAppTimeSeriesPanel =
@@ -604,7 +623,7 @@ local tbOverride = tbStandardOptions.override;
           %s
           name=~"$application",
         }
-      ) by (namespace, job, dest_server, project, name, sync_status)
+      ) by (namespace, cluster, job, dest_server, project, name, sync_status)
     ||| % commonLabels,
 
     local appSyncStatusByAppTimeSeriesPanel =
@@ -641,7 +660,7 @@ local tbOverride = tbStandardOptions.override;
             }[$__rate_interval]
           )
         )
-      ) by (namespace, job, dest_server, project, name, phase)
+      ) by (namespace, cluster, job, dest_server, project, name, phase)
     ||| % commonLabels,
 
     local appSyncByAppTimeSeriesPanel =
