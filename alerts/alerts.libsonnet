@@ -16,7 +16,7 @@
                     }[%(argoCdAppSyncInterval)s]
                   )
                 )
-              ) by (job, dest_server, project, name, phase) > 0
+              ) by (job, cluster, dest_server, project, name, phase) > 0
             ||| % $._config,
             labels: {
               severity: 'warning',
@@ -36,7 +36,7 @@
                   %(argoCdSelector)s,
                   health_status!~"Healthy|Progressing"
                 }
-              ) by (job, dest_server, project, name, health_status)
+              ) by (job, cluster, dest_server, project, name, health_status)
               > 0
             ||| % $._config,
             labels: {
@@ -57,7 +57,7 @@
                   %(argoCdSelector)s,
                   sync_status!="Synced"
                 }
-              ) by (job, dest_server, project, name, sync_status)
+              ) by (job, cluster, dest_server, project, name, sync_status)
               > 0
             ||| % $._config,
             labels: {
@@ -79,7 +79,7 @@
                   autosync_enabled!="true",
                   name!~"%(argoAutoSyncDisabledIgnoredApps)s"
                 }
-              ) by (job, dest_server, project, name, autosync_enabled)
+              ) by (job, cluster, dest_server, project, name, autosync_enabled)
               > 0
             ||| % $._config,
             labels: {
@@ -104,7 +104,7 @@
                     }[%(argoCdNotificationDeliveryInterval)s]
                   )
                 )
-              ) by (job, exported_service, succeeded) > 0
+              ) by (job, cluster, exported_service, succeeded) > 0
             ||| % $._config,
             'for': '1m',
             labels: {
